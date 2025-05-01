@@ -93,10 +93,11 @@ func (b *Bot) handleText(
 		},
 	}
 
+	streamFalse := false
 	req := &api.ChatRequest{
 		Model:    b.cfg.Model,
 		Messages: msgs,
-		Stream:   new(bool),
+		Stream:   &streamFalse,
 	}
 
 	resFn := func(resp api.ChatResponse) error {
