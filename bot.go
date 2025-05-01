@@ -44,7 +44,12 @@ type Bot struct {
 func NewBot(cfg Config) (*Bot, error) {
 	ollamaClient, err := api.ClientFromEnvironment()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create Ollama client: %w", err)
+	}
+
+	// Add a check to ensure ollamaClient is not nil
+	if ollamaClient == nil {
+		return nil, fmt.Errorf("Ollama client is nil after initialization")
 	}
 
 	return &Bot{
@@ -73,6 +78,16 @@ func containsCodeBlock(text string) bool {
 func (b *Bot) handleText(
 	ctx context.Context, tg *tbot.Bot, update *models.Update,
 ) {
+	// Check if ollamaClient is nil
+	if b.ollamaClient == nil {
+		fmt.Println("Error: Ollama client is nil")
+		tg.SendMessage(ctx, &tbot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   "Sorry, I'm having trouble connecting to my backend. Please try again later.",
+		})
+		return
+	}
+
 	// Send a "typing" action to show the bot is processing
 	tg.SendChatAction(
 		ctx, &tbot.SendChatActionParams{
