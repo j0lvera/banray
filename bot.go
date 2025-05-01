@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	tbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -63,6 +64,12 @@ func (b *Bot) Start(ctx context.Context) {
 	tg.Start(ctx)
 }
 
+// containsCodeBlock checks if text contains markdown code blocks
+func containsCodeBlock(text string) bool {
+	// Check for triple backtick code blocks
+	return strings.Contains(text, "```")
+}
+
 func (b *Bot) handleText(
 	ctx context.Context, tg *tbot.Bot, update *models.Update,
 ) {
@@ -93,13 +100,19 @@ func (b *Bot) handleText(
 	}
 
 	resFn := func(resp api.ChatResponse) error {
+		// Create message params
+		params := &tbot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   resp.Message.Content,
+		}
+
+		// If the response contains code blocks, use markdown parsing
+		if containsCodeBlock(resp.Message.Content) {
+			params.ParseMode = models.ParseModeMarkdown
+		}
+
 		// Send the response back to the user
-		tg.SendMessage(
-			ctx, &tbot.SendMessageParams{
-				ChatID: update.Message.Chat.ID,
-				Text:   resp.Message.Content,
-			},
-		)
+		tg.SendMessage(ctx, params)
 		return nil
 	}
 
