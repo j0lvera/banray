@@ -1,0 +1,110 @@
+package main
+
+import (
+	"context"
+	"fmt"
+
+	tbot "github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
+	"github.com/kelseyhightower/envconfig"
+	"github.com/ollama/ollama/api"
+)
+
+type Config struct {
+	Token string `envconfig:"TELEGRAM_API_TOKEN"`
+	Model string `envconfig:"MODEL" default:"llama3"`
+}
+
+// Load loads the configuration from environment variables
+func (c Config) Load() (Config, error) {
+	cfg := c
+	var err error
+
+	// load environment variables into the Config struct
+	if err = envconfig.Process("", &cfg); err != nil {
+		// if there is an error, return the default config and the error
+		return c, err
+	}
+
+	// return the loaded config
+	return cfg, nil
+}
+
+func NewConfig() Config {
+	var cfg Config
+	return cfg
+}
+
+type Bot struct {
+	cfg          Config
+	ollamaClient *api.Client
+}
+
+func NewBot(cfg Config) (*Bot, error) {
+	ollamaClient, err := api.ClientFromEnvironment()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Bot{
+		cfg:          cfg,
+		ollamaClient: ollamaClient,
+	}, nil
+}
+
+func (b *Bot) Start(ctx context.Context) {
+	opts := []tbot.Option{
+		tbot.WithDefaultHandler(b.handleText),
+	}
+	tg, err := tbot.New(b.cfg.Token, opts...)
+	if err != nil {
+		panic(err)
+	}
+	tg.Start(ctx)
+}
+
+func (b *Bot) handleText(
+	ctx context.Context, tg *tbot.Bot, update *models.Update,
+) {
+	// Send a "typing" action to show the bot is processing
+	tg.SendChatAction(
+		ctx, &tbot.SendChatActionParams{
+			ChatID: update.Message.Chat.ID,
+			Action: models.ChatActionTyping,
+		},
+	)
+
+	// Create a chat request to Ollama
+	msgs := []api.Message{
+		api.Message{
+			Role:    "system",
+			Content: "Provide very brief, concise responses",
+		},
+		api.Message{
+			Role:    "user",
+			Content: update.Message.Text,
+		},
+	}
+
+	req := &api.ChatRequest{
+		Model:    b.cfg.Model,
+		Messages: msgs,
+		Stream:   new(bool),
+	}
+
+	resFn := func(resp api.ChatResponse) error {
+		// Send the response back to the user
+		tg.SendMessage(
+			ctx, &tbot.SendMessageParams{
+				ChatID: update.Message.Chat.ID,
+				Text:   resp.Message.Content,
+			},
+		)
+		return nil
+	}
+
+	err := b.ollamaClient.Chat(ctx, req, resFn)
+	if err != nil {
+		fmt.Println("Error sending message:", err)
+	}
+}

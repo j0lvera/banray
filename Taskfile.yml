@@ -1,0 +1,7 @@
+version: 3
+
+tasks:
+  ai:
+    desc: Run AI assistant
+    cmds:
+      - aider --model openrouter/anthropic/claude-3.7-sonnet
