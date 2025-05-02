@@ -21,14 +21,18 @@ type Params struct {
 type Result struct {
 	fx.Out
 
-	Bot *tbot.Bot
+	Bot   *tbot.Bot
+	Store *Store
 }
 
 func New(lc fx.Lifecycle, p Params) (Result, error) {
+	// Create conversation store
+	store := NewStore()
+
 	opts := []tbot.Option{
 		tbot.WithDefaultHandler(
 			func(ctx context.Context, tg *tbot.Bot, update *models.Update) {
-				handleMessage(ctx, tg, update, p.Service)
+				handleMessage(ctx, tg, update, p.Service, store, p.Config)
 			},
 		),
 	}
@@ -53,7 +57,8 @@ func New(lc fx.Lifecycle, p Params) (Result, error) {
 	)
 
 	return Result{
-		Bot: tg,
+		Bot:   tg,
+		Store: store,
 	}, nil
 }
 
@@ -74,7 +79,24 @@ func handleMessage(
 	tg *tbot.Bot,
 	update *models.Update,
 	svc Service,
+	store *Store,
+	config *config.Config,
 ) {
+	// Check for command to clear history
+	if update.Message.Text == "/clear" {
+		store.Clear(update.Message.Chat.ID)
+		tg.SendMessage(
+			ctx, &tbot.SendMessageParams{
+				ChatID: update.Message.Chat.ID,
+				Text:   "Conversation history cleared.",
+			},
+		)
+		return
+	}
+
+	// Store the user message
+	store.AddUserMessage(update.Message.Chat.ID, update.Message.Text)
+
 	// Send a "typing" action to show the bot is processing
 	tg.SendChatAction(
 		ctx, &tbot.SendChatActionParams{
@@ -83,8 +105,13 @@ func handleMessage(
 		},
 	)
 
+	// Get conversation history
+	history := store.History(
+		update.Message.Chat.ID, config.HistoryLimit,
+	)
+
 	// Generate response using the AI service
-	response, err := svc.Reply(ctx, update.Message.Text)
+	response, err := svc.Reply(ctx, update.Message.Text, history)
 	if err != nil {
 		fmt.Println("Error generating response:", err)
 		tg.SendMessage(
@@ -95,6 +122,9 @@ func handleMessage(
 		)
 		return
 	}
+
+	// Store the bot response
+	store.AddBotMessage(update.Message.Chat.ID, response.Content)
 
 	// Create message params
 	params := &tbot.SendMessageParams{

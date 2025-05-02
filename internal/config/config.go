@@ -6,8 +6,9 @@ import (
 )
 
 type Config struct {
-	Token string `envconfig:"TELEGRAM_API_TOKEN"`
-	Model string `envconfig:"MODEL" default:"llama3"`
+	Token       string `envconfig:"TELEGRAM_API_TOKEN"`
+	Model       string `envconfig:"MODEL" default:"llama3"`
+	HistoryLimit int    `envconfig:"HISTORY_LIMIT" default:"10"` // Default to 10 messages in history
 }
 
 // LoadEnv loads the configuration from environment variables

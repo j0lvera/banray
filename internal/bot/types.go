@@ -9,5 +9,5 @@ type Response struct {
 
 // Service defines the interface for AI services that the bot can use
 type Service interface {
-	Reply(ctx context.Context, prompt string) (Response, error)
+	Reply(ctx context.Context, prompt string, history []Message) (Response, error)
 }
