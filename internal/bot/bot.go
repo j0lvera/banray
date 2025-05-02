@@ -8,6 +8,7 @@ import (
 	tbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/j0lvera/banray/internal/config"
+	"github.com/rs/zerolog"
 	"go.uber.org/fx"
 )
 
@@ -25,7 +26,7 @@ type Result struct {
 	Store *Store
 }
 
-func New(lc fx.Lifecycle, p Params) (Result, error) {
+func New(lc fx.Lifecycle, p Params, log *zerolog.Logger) (Result, error) {
 	// Create conversation store
 	store := NewStore()
 
@@ -45,12 +46,12 @@ func New(lc fx.Lifecycle, p Params) (Result, error) {
 	lc.Append(
 		fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				fmt.Println("Starting Telegram bot...")
+				log.Info().Msg("starting telegram bot...")
 				go tg.Start(context.Background())
 				return nil
 			},
 			OnStop: func(ctx context.Context) error {
-				fmt.Println("Stopping Telegram bot...")
+				log.Info().Msg("stopping telegram bot...")
 				return nil
 			},
 		},
