@@ -100,8 +100,8 @@ func handleMessage(
 		Text:   response.Content,
 	}
 
-	// If the response contains code blocks, use markdown parsing
-	if containsCodeBlock(response.Content) {
+	// If the response contains markdown elements, enable markdown parsing
+	if containsMarkdown(response.Content) {
 		params.ParseMode = models.ParseModeMarkdown
 	}
 
@@ -109,7 +109,13 @@ func handleMessage(
 	tg.SendMessage(ctx, params)
 }
 
-// Helper function to check if text contains code blocks
-func containsCodeBlock(text string) bool {
-	return strings.Contains(text, "```")
+// containsMarkdown checks if text contains any markdown elements
+func containsMarkdown(text string) bool {
+	// Check for any markdown elements
+	return strings.Contains(text, "```") || // code blocks
+	       strings.Contains(text, "*") ||   // bold/italic or bullet points
+	       strings.Contains(text, "_") ||   // italic
+	       strings.Contains(text, "`") ||   // inline code
+	       strings.Contains(text, "[") ||   // links
+	       strings.Contains(text, "#")      // headers
 }
