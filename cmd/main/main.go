@@ -1,43 +1,26 @@
 package main
 
 import (
-	"os"
-	"time"
-
 	"github.com/ipfans/fxlogger"
 	"github.com/j0lvera/banray/internal/ai"
 	"github.com/j0lvera/banray/internal/bot"
 	"github.com/j0lvera/banray/internal/config"
 	"github.com/j0lvera/banray/internal/log"
-	"github.com/rs/zerolog"
 	"go.uber.org/fx"
 )
 
 func main() {
-	logWriter := zerolog.ConsoleWriter{
-		Out:        os.Stdout,
-		TimeFormat: time.RFC3339,
-	}
-
-	level := zerolog.InfoLevel
-	if os.Getenv("DEBUG") == "true" {
-		level = zerolog.DebugLevel
-	}
+	// Create the logger first
+	logger := log.NewFxLogger()
 
 	fx.New(
 		config.Module(),
 		ai.Module(),
 		bot.Module(),
 		log.Module(),
+		// Use the same logger for fx
 		fx.WithLogger(
-			fxlogger.WithZerolog(
-				zerolog.New(logWriter).
-					Level(level).
-					With().
-					Timestamp().
-					Caller().
-					Logger(),
-			),
+			fxlogger.WithZerolog(logger),
 		),
 	).Run()
 }
