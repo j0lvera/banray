@@ -8,6 +8,7 @@ import (
 	"github.com/j0lvera/banray/internal/ai"
 	"github.com/j0lvera/banray/internal/bot"
 	"github.com/j0lvera/banray/internal/config"
+	"github.com/j0lvera/banray/internal/log"
 	"github.com/rs/zerolog"
 	"go.uber.org/fx"
 )
@@ -27,6 +28,7 @@ func main() {
 		config.Module(),
 		ai.Module(),
 		bot.Module(),
+		log.Module(),
 		fx.WithLogger(
 			fxlogger.WithZerolog(
 				zerolog.New(logWriter).
