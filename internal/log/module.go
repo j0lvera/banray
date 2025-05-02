@@ -4,6 +4,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ipfans/fxlogger"
 	"github.com/rs/zerolog"
 	"go.uber.org/fx"
 )
@@ -32,7 +33,11 @@ func Module() fx.Option {
 	return fx.Module(
 		"log",
 		fx.Provide(
-			NewLogger, // Provide the constructor function, not the logger instance
+			NewLogger,
 		),
+		// Use fxlogger to provide a zerolog adapter for Fx's logging
+		fx.WithLogger(func(log zerolog.Logger) fx.Logger {
+			return fxlogger.WithZerolog(log)
+		}),
 	)
 }
