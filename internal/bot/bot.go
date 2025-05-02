@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	tbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -13,7 +14,8 @@ import (
 type Params struct {
 	fx.In
 
-	Config *config.Config
+	Config  *config.Config
+	Service Service
 }
 
 type Result struct {
@@ -24,7 +26,11 @@ type Result struct {
 
 func New(lc fx.Lifecycle, p Params) (Result, error) {
 	opts := []tbot.Option{
-		tbot.WithDefaultHandler(handler),
+		tbot.WithDefaultHandler(
+			func(ctx context.Context, tg *tbot.Bot, update *models.Update) {
+				handleMessage(ctx, tg, update, p.Service)
+			},
+		),
 	}
 
 	tg, err := tbot.New(p.Config.Token, opts...)
@@ -63,11 +69,47 @@ func Module() fx.Option {
 	)
 }
 
-func handler(ctx context.Context, tg *tbot.Bot, update *models.Update) {
-	tg.SendMessage(
-		ctx, &tbot.SendMessageParams{
+func handleMessage(
+	ctx context.Context, tg *tbot.Bot, update *models.Update,
+	aiService Service,
+) {
+	// Send a "typing" action to show the bot is processing
+	tg.SendChatAction(
+		ctx, &tbot.SendChatActionParams{
 			ChatID: update.Message.Chat.ID,
-			Text:   update.Message.Text,
+			Action: models.ChatActionTyping,
 		},
 	)
+
+	// Generate response using the AI service
+	response, err := aiService.Reply(ctx, update.Message.Text)
+	if err != nil {
+		fmt.Println("Error generating response:", err)
+		tg.SendMessage(
+			ctx, &tbot.SendMessageParams{
+				ChatID: update.Message.Chat.ID,
+				Text:   "Sorry, I encountered an error while processing your request.",
+			},
+		)
+		return
+	}
+
+	// Create message params
+	params := &tbot.SendMessageParams{
+		ChatID: update.Message.Chat.ID,
+		Text:   response.Content,
+	}
+
+	// If the response contains code blocks, use markdown parsing
+	if containsCodeBlock(response.Content) {
+		params.ParseMode = models.ParseModeMarkdown
+	}
+
+	// Send the response back to the user
+	tg.SendMessage(ctx, params)
+}
+
+// Helper function to check if text contains code blocks
+func containsCodeBlock(text string) bool {
+	return strings.Contains(text, "```")
 }

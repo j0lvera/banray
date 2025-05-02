@@ -7,6 +7,7 @@ import (
 
 type Config struct {
 	Token string `envconfig:"TELEGRAM_API_TOKEN"`
+	Model string `envconfig:"MODEL" default:"llama3"`
 }
 
 // LoadEnv loads the configuration from environment variables
