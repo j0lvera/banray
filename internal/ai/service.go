@@ -32,18 +32,38 @@ func NewService(model string) (*Service, error) {
 
 // Reply implements the bot.Service interface
 func (s *Service) Reply(
-	ctx context.Context, prompt string,
+	ctx context.Context, prompt string, history []bot.Message,
 ) (bot.Response, error) {
+	// Convert bot.Message history to api.Message format
 	msgs := []api.Message{
 		{
 			Role:    "system",
-			Content: "Provide very brief, concise responses",
+			Content: "Provide brief, concise responses with a friendly and human tone.",
 		},
-		{
+	}
+
+	// Add conversation history
+	for _, msg := range history {
+		// Skip the current prompt which will be added separately
+		if msg.Role == "user" && msg.Content == prompt {
+			continue
+		}
+
+		msgs = append(
+			msgs, api.Message{
+				Role:    msg.Role,
+				Content: msg.Content,
+			},
+		)
+	}
+
+	// Add the current prompt
+	msgs = append(
+		msgs, api.Message{
 			Role:    "user",
 			Content: prompt,
 		},
-	}
+	)
 
 	streamFalse := false
 	req := &api.ChatRequest{
