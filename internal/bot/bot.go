@@ -26,7 +26,7 @@ type Result struct {
 	Store *Store
 }
 
-func New(lc fx.Lifecycle, p Params, log *zerolog.Logger) (Result, error) {
+func New(lc fx.Lifecycle, p Params, log zerolog.Logger) (Result, error) {
 	// Create conversation store
 	store := NewStore()
 
