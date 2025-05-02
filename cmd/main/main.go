@@ -14,10 +14,10 @@ func main() {
 	logger := log.NewFxLogger()
 
 	fx.New(
-		config.Module(),
 		ai.Module(),
 		bot.Module(),
 		log.Module(),
+		config.Module(),
 		// Use the same logger for fx
 		fx.WithLogger(
 			fxlogger.WithZerolog(logger),

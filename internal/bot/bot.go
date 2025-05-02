@@ -144,15 +144,16 @@ func handleMessage(
 	// Create message params
 	params := &tbot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
+		Text:   response.Content,
 	}
 
 	// If the response contains markdown elements, enable markdown parsing
-	if containsCodeBlock(response.Content) {
-		params.ParseMode = models.ParseModeMarkdown
-		params.Text = response.Content
-	} else {
-		params.Text = response.Content
-	}
+	//if containsCodeBlock(response.Content) {
+	//	params.ParseMode = models.ParseModeMarkdown
+	//	params.Text = response.Content
+	//} else {
+	//	params.Text = response.Content
+	//}
 
 	// Send the response back to the user
 	tg.SendMessage(ctx, params)
