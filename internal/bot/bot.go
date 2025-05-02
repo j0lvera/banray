@@ -70,8 +70,10 @@ func Module() fx.Option {
 }
 
 func handleMessage(
-	ctx context.Context, tg *tbot.Bot, update *models.Update,
-	aiService Service,
+	ctx context.Context,
+	tg *tbot.Bot,
+	update *models.Update,
+	svc Service,
 ) {
 	// Send a "typing" action to show the bot is processing
 	tg.SendChatAction(
@@ -82,7 +84,7 @@ func handleMessage(
 	)
 
 	// Generate response using the AI service
-	response, err := aiService.Reply(ctx, update.Message.Text)
+	response, err := svc.Reply(ctx, update.Message.Text)
 	if err != nil {
 		fmt.Println("Error generating response:", err)
 		tg.SendMessage(
@@ -100,11 +102,9 @@ func handleMessage(
 	}
 
 	// If the response contains markdown elements, enable markdown parsing
-	if containsMarkdown(response.Content) {
-		// Use MarkdownV2 for better markdown support
+	if containsCodeBlock(response.Content) {
 		params.ParseMode = models.ParseModeMarkdown
-		// Use the built-in EscapeMarkdown function to properly escape special characters
-		params.Text = tbot.EscapeMarkdown(response.Content)
+		params.Text = response.Content
 	} else {
 		params.Text = response.Content
 	}
@@ -113,13 +113,8 @@ func handleMessage(
 	tg.SendMessage(ctx, params)
 }
 
-// containsMarkdown checks if text contains any markdown elements
-func containsMarkdown(text string) bool {
+// containsCodeBlock checks if text contains any markdown elements
+func containsCodeBlock(text string) bool {
 	// Check for any markdown elements
-	return strings.Contains(text, "```") || // code blocks
-		strings.Contains(text, "*") || // bold/italic or bullet points
-		strings.Contains(text, "_") || // italic
-		strings.Contains(text, "`") || // inline code
-		strings.Contains(text, "[") || // links
-		strings.Contains(text, "#") // headers
+	return strings.Contains(text, "```")
 }
