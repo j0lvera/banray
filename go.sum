@@ -2,6 +2,8 @@ github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSV
 github.com/go-telegram/bot v1.15.0 h1:/ba5pp084MUhjR5sQDymQ7JNZ001CQa7QjtxLWcuGpg=
 github.com/go-telegram/bot v1.15.0/go.mod h1:i2TRs7fXWIeaceF3z7KzsMt/he0TwkVC680mvdTFYeM=
 github.com/godbus/dbus/v5 v5.0.4/go.mod h1:xhWf0FNVPg57R7Z0UbKHbJfkEywrmjJnf7w5xrFpKfA=
+github.com/ipfans/fxlogger v0.2.0 h1:VsT5EGI2qNXJ7CzNJtDTTSmDpoy9t9KiVkvD8Ou7lig=
+github.com/ipfans/fxlogger v0.2.0/go.mod h1:w5ps0NJnl3sSkvv0PSGQEwMtDL8upORfThYbdQREBXo=
 github.com/kelseyhightower/envconfig v1.4.0 h1:Im6hONhd3pLkfDFsbRgu68RDNkGF1r3dvMUtDTo2cv8=
 github.com/kelseyhightower/envconfig v1.4.0/go.mod h1:cccZRl6mQpaq41TPp5QxidR+Sa3axMbJDNb//FQX6Gg=
 github.com/mattn/go-colorable v0.1.13/go.mod h1:7S9/ev0klgBDR4GtXTXX8a3vIGJpMovkB8vQcUbaXHg=

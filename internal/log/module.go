@@ -4,9 +4,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/ipfans/fxlogger"
 	"github.com/rs/zerolog"
-	"go.uber.org/fx"
 )
 
 // NewLogger creates a configured zerolog.Logger instance
@@ -27,15 +25,4 @@ func NewLogger() zerolog.Logger {
 		Timestamp().
 		Caller().
 		Logger()
-}
-
-func Module() fx.Option {
-	return fx.Module(
-		"log",
-		fx.Provide(
-			NewLogger,
-		),
-		// Use fxlogger.Default() which doesn't require a logger instance
-		fx.WithLogger(fxlogger.Default),
-	)
 }
