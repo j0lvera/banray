@@ -7,6 +7,7 @@ import (
 	"github.com/ipfans/fxlogger"
 	"github.com/rs/zerolog"
 	"go.uber.org/fx"
+	"go.uber.org/fx/fxevent"
 )
 
 // NewLogger creates a configured zerolog.Logger instance
@@ -36,7 +37,7 @@ func Module() fx.Option {
 			NewLogger,
 		),
 		// Use fxlogger to provide a zerolog adapter for Fx's logging
-		fx.WithLogger(func(log zerolog.Logger) fx.Logger {
+		fx.WithLogger(func(log zerolog.Logger) fxevent.Logger {
 			return fxlogger.WithZerolog(log)
 		}),
 	)
