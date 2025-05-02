@@ -97,12 +97,16 @@ func handleMessage(
 	// Create message params
 	params := &tbot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
-		Text:   response.Content,
 	}
 
 	// If the response contains markdown elements, enable markdown parsing
 	if containsMarkdown(response.Content) {
+		// Use MarkdownV2 for better markdown support
 		params.ParseMode = models.ParseModeMarkdown
+		// Use the built-in EscapeMarkdown function to properly escape special characters
+		params.Text = tbot.EscapeMarkdown(response.Content)
+	} else {
+		params.Text = response.Content
 	}
 
 	// Send the response back to the user
@@ -113,9 +117,9 @@ func handleMessage(
 func containsMarkdown(text string) bool {
 	// Check for any markdown elements
 	return strings.Contains(text, "```") || // code blocks
-	       strings.Contains(text, "*") ||   // bold/italic or bullet points
-	       strings.Contains(text, "_") ||   // italic
-	       strings.Contains(text, "`") ||   // inline code
-	       strings.Contains(text, "[") ||   // links
-	       strings.Contains(text, "#")      // headers
+		strings.Contains(text, "*") || // bold/italic or bullet points
+		strings.Contains(text, "_") || // italic
+		strings.Contains(text, "`") || // inline code
+		strings.Contains(text, "[") || // links
+		strings.Contains(text, "#") // headers
 }
