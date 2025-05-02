@@ -113,3 +113,19 @@ func (s *Store) Clear(chatID int64) {
 
 	delete(s.history, chatID)
 }
+
+// Length returns the number of messages in the conversation history for a chat
+func (s *Store) Length(chatID int64) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	conv, exists := s.history[chatID]
+	if !exists {
+		return 0
+	}
+
+	conv.mu.Lock()
+	defer conv.mu.Unlock()
+
+	return len(conv.Messages)
+}

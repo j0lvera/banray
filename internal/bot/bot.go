@@ -94,6 +94,20 @@ func handleMessage(
 		return
 	}
 
+	// Check if we need to clear history due to exceeding the limit
+	// We check before adding the new message, and we account for the fact
+	// that we'll be adding both a user message and a bot response (2 messages)
+	if store.Length(update.Message.Chat.ID) >= config.HistoryLimit-1 {
+		store.Clear(update.Message.Chat.ID)
+		// Optionally notify the user that history was cleared
+		tg.SendMessage(
+			ctx, &tbot.SendMessageParams{
+				ChatID: update.Message.Chat.ID,
+				Text:   "Conversation history was automatically cleared due to length.",
+			},
+		)
+	}
+
 	// Store the user message
 	store.AddUserMessage(update.Message.Chat.ID, update.Message.Text)
 
