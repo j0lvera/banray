@@ -8,7 +8,8 @@ import (
 	"go.uber.org/fx"
 )
 
-func Module() fx.Option {
+// NewLogger creates a configured zerolog.Logger instance
+func NewLogger() zerolog.Logger {
 	logWriter := zerolog.ConsoleWriter{
 		Out:        os.Stdout,
 		TimeFormat: time.RFC3339,
@@ -19,15 +20,19 @@ func Module() fx.Option {
 		level = zerolog.DebugLevel
 	}
 
+	return zerolog.New(logWriter).
+		Level(level).
+		With().
+		Timestamp().
+		Caller().
+		Logger()
+}
+
+func Module() fx.Option {
 	return fx.Module(
 		"log",
 		fx.Provide(
-			zerolog.New(logWriter).
-				Level(level).
-				With().
-				Timestamp().
-				Caller().
-				Logger(),
+			NewLogger, // Provide the constructor function, not the logger instance
 		),
 	)
 }
