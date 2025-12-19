@@ -58,7 +58,7 @@ type Querier interface {
 
 ### Conversation Store
 
-`internal/bot/store.go` provides an in-memory conversation store keyed by Telegram chat ID. Uses `agent.Message` for storage. Thread-safe with `sync.RWMutex`.
+`internal/agent/store.go` provides an in-memory conversation store. Uses `agent.Message` for storage. Thread-safe with `sync.RWMutex`. Keyed by conversation ID (int64).
 
 ### Bot Commands
 

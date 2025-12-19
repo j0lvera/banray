@@ -22,11 +22,11 @@ type Result struct {
 	fx.Out
 
 	Bot   *tbot.Bot
-	Store *Store
+	Store *agent.Store
 }
 
 func New(lc fx.Lifecycle, p Params, log zerolog.Logger) (Result, error) {
-	store := NewStore()
+	store := agent.NewStore()
 
 	opts := []tbot.Option{
 		tbot.WithDefaultHandler(
@@ -78,7 +78,7 @@ func handleMessage(
 	tg *tbot.Bot,
 	update *models.Update,
 	querier agent.Querier,
-	store *Store,
+	store *agent.Store,
 	cfg *config.Config,
 	log *zerolog.Logger,
 ) {
@@ -110,7 +110,7 @@ func handleMessage(
 	}
 
 	// Store the user message
-	store.AddUserMessage(chatID, update.Message.Text)
+	store.AddMessage(chatID, agent.RoleUser, update.Message.Text)
 
 	// Send a "typing" action to show the bot is processing
 	tg.SendChatAction(
@@ -148,7 +148,7 @@ func handleMessage(
 	log.Info().Int64("chat_id", chatID).Msg("ai response received")
 
 	// Store the bot response
-	store.AddBotMessage(chatID, response)
+	store.AddMessage(chatID, agent.RoleAssistant, response)
 
 	// Send the response back to the user
 	tg.SendMessage(
