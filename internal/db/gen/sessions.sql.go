@@ -18,11 +18,16 @@ RETURNING id, uuid, user_id, system_prompt, ended_at, created_at
 `
 
 type CreateSessionParams struct {
-	UserID       int64
-	SystemPrompt pgtype.Text
+	UserID       int64       `json:"user_id"`
+	SystemPrompt pgtype.Text `json:"system_prompt"`
 }
 
-func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (DataSession, error) {
+// CreateSession
+//
+//	INSERT INTO data.sessions (user_id, system_prompt)
+//	VALUES ($1, $2)
+//	RETURNING id, uuid, user_id, system_prompt, ended_at, created_at
+func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (*DataSession, error) {
 	row := q.db.QueryRow(ctx, createSession, arg.UserID, arg.SystemPrompt)
 	var i DataSession
 	err := row.Scan(
@@ -33,13 +38,16 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (D
 		&i.EndedAt,
 		&i.CreatedAt,
 	)
-	return i, err
+	return &i, err
 }
 
 const endSession = `-- name: EndSession :exec
 UPDATE data.sessions SET ended_at = NOW() WHERE id = $1
 `
 
+// EndSession
+//
+//	UPDATE data.sessions SET ended_at = NOW() WHERE id = $1
 func (q *Queries) EndSession(ctx context.Context, id int64) error {
 	_, err := q.db.Exec(ctx, endSession, id)
 	return err
@@ -52,7 +60,13 @@ ORDER BY created_at DESC
 LIMIT 1
 `
 
-func (q *Queries) GetActiveSession(ctx context.Context, userID int64) (DataSession, error) {
+// GetActiveSession
+//
+//	SELECT id, uuid, user_id, system_prompt, ended_at, created_at FROM data.sessions
+//	WHERE user_id = $1 AND ended_at IS NULL
+//	ORDER BY created_at DESC
+//	LIMIT 1
+func (q *Queries) GetActiveSession(ctx context.Context, userID int64) (*DataSession, error) {
 	row := q.db.QueryRow(ctx, getActiveSession, userID)
 	var i DataSession
 	err := row.Scan(
@@ -63,7 +77,7 @@ func (q *Queries) GetActiveSession(ctx context.Context, userID int64) (DataSessi
 		&i.EndedAt,
 		&i.CreatedAt,
 	)
-	return i, err
+	return &i, err
 }
 
 const getUserSessions = `-- name: GetUserSessions :many
@@ -74,17 +88,23 @@ LIMIT $2
 `
 
 type GetUserSessionsParams struct {
-	UserID int64
-	Limit  int32
+	UserID int64 `json:"user_id"`
+	Limit  int32 `json:"limit"`
 }
 
-func (q *Queries) GetUserSessions(ctx context.Context, arg GetUserSessionsParams) ([]DataSession, error) {
+// GetUserSessions
+//
+//	SELECT id, uuid, user_id, system_prompt, ended_at, created_at FROM data.sessions
+//	WHERE user_id = $1
+//	ORDER BY created_at DESC
+//	LIMIT $2
+func (q *Queries) GetUserSessions(ctx context.Context, arg GetUserSessionsParams) ([]*DataSession, error) {
 	rows, err := q.db.Query(ctx, getUserSessions, arg.UserID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []DataSession
+	var items []*DataSession
 	for rows.Next() {
 		var i DataSession
 		if err := rows.Scan(
@@ -97,7 +117,7 @@ func (q *Queries) GetUserSessions(ctx context.Context, arg GetUserSessionsParams
 		); err != nil {
 			return nil, err
 		}
-		items = append(items, i)
+		items = append(items, &i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

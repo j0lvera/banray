@@ -8,9 +8,17 @@ import (
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
+// QueryResult holds the response and token usage from an LLM call.
+type QueryResult struct {
+	Content      string
+	InputTokens  int
+	OutputTokens int
+	TotalTokens  int
+}
+
 // Querier sends messages to an LLM and receives responses.
 type Querier interface {
-	Query(ctx context.Context, messages []Message) (string, error)
+	Query(ctx context.Context, messages []Message) (QueryResult, error)
 }
 
 // OpenAIQuerier implements Querier using the OpenAI-compatible API.
@@ -32,8 +40,8 @@ func NewOpenAIQuerier(apiKey, baseURL, model string) (*OpenAIQuerier, error) {
 	return &OpenAIQuerier{client: client}, nil
 }
 
-// Query sends messages to the LLM and returns the response.
-func (q *OpenAIQuerier) Query(ctx context.Context, messages []Message) (string, error) {
+// Query sends messages to the LLM and returns the response with token usage.
+func (q *OpenAIQuerier) Query(ctx context.Context, messages []Message) (QueryResult, error) {
 	llmMessages := make([]llms.MessageContent, 0, len(messages))
 
 	for _, msg := range messages {
@@ -53,12 +61,35 @@ func (q *OpenAIQuerier) Query(ctx context.Context, messages []Message) (string, 
 
 	resp, err := q.client.GenerateContent(ctx, llmMessages)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate content: %w", err)
+		return QueryResult{}, fmt.Errorf("failed to generate content: %w", err)
 	}
 
 	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("no choices returned from model")
+		return QueryResult{}, fmt.Errorf("no choices returned from model")
 	}
 
-	return resp.Choices[0].Content, nil
+	result := QueryResult{
+		Content: resp.Choices[0].Content,
+	}
+
+	// Extract token usage from GenerationInfo
+	if genInfo := resp.Choices[0].GenerationInfo; genInfo != nil {
+		if v, ok := genInfo["PromptTokens"].(float64); ok {
+			result.InputTokens = int(v)
+		} else if v, ok := genInfo["PromptTokens"].(int); ok {
+			result.InputTokens = v
+		}
+		if v, ok := genInfo["CompletionTokens"].(float64); ok {
+			result.OutputTokens = int(v)
+		} else if v, ok := genInfo["CompletionTokens"].(int); ok {
+			result.OutputTokens = v
+		}
+		if v, ok := genInfo["TotalTokens"].(float64); ok {
+			result.TotalTokens = int(v)
+		} else if v, ok := genInfo["TotalTokens"].(int); ok {
+			result.TotalTokens = v
+		}
+	}
+
+	return result, nil
 }

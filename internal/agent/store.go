@@ -21,7 +21,7 @@ func NewStore(client *db.Client) *Store {
 }
 
 // GetOrCreateSession returns the active session for a user, creating one if none exists
-func (s *Store) GetOrCreateSession(ctx context.Context, userID int64, systemPrompt string) (dbgen.DataSession, error) {
+func (s *Store) GetOrCreateSession(ctx context.Context, userID int64, systemPrompt string) (*dbgen.DataSession, error) {
 	session, err := s.client.Queries.GetActiveSession(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -31,13 +31,13 @@ func (s *Store) GetOrCreateSession(ctx context.Context, userID int64, systemProm
 				SystemPrompt: pgtype.Text{String: systemPrompt, Valid: systemPrompt != ""},
 			})
 		}
-		return dbgen.DataSession{}, err
+		return nil, err
 	}
 	return session, nil
 }
 
 // CreateSession creates a new session for a user
-func (s *Store) CreateSession(ctx context.Context, userID int64, systemPrompt string) (dbgen.DataSession, error) {
+func (s *Store) CreateSession(ctx context.Context, userID int64, systemPrompt string) (*dbgen.DataSession, error) {
 	return s.client.Queries.CreateSession(ctx, dbgen.CreateSessionParams{
 		UserID:       userID,
 		SystemPrompt: pgtype.Text{String: systemPrompt, Valid: systemPrompt != ""},
@@ -49,8 +49,8 @@ func (s *Store) EndSession(ctx context.Context, sessionID int64) error {
 	return s.client.Queries.EndSession(ctx, sessionID)
 }
 
-// AddMessage adds a message to a session
-func (s *Store) AddMessage(ctx context.Context, sessionID int64, role Role, content string) error {
+// AddMessage adds a message to a session and returns the message ID
+func (s *Store) AddMessage(ctx context.Context, sessionID int64, role Role, content string) (int64, error) {
 	return s.client.Queries.AddMessage(ctx, dbgen.AddMessageParams{
 		SessionID: sessionID,
 		Role:      string(role),
@@ -82,4 +82,17 @@ func (s *Store) CountSessionMessages(ctx context.Context, sessionID int64) (int,
 		return 0, err
 	}
 	return int(count), nil
+}
+
+// RecordLLMRequest stores an LLM API request with token usage
+func (s *Store) RecordLLMRequest(ctx context.Context, sessionID int64, messageID int64, inputTokens, outputTokens, totalTokens int, model string) error {
+	_, err := s.client.Queries.CreateLLMRequest(ctx, dbgen.CreateLLMRequestParams{
+		SessionID:    sessionID,
+		MessageID:    pgtype.Int8{Int64: messageID, Valid: messageID > 0},
+		InputTokens:  int32(inputTokens),
+		OutputTokens: int32(outputTokens),
+		TotalTokens:  int32(totalTokens),
+		Model:        model,
+	})
+	return err
 }

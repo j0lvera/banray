@@ -178,7 +178,8 @@ func handleMessage(
 	}
 
 	// 5. Store the user message
-	if err := store.AddMessage(ctx, session.ID, agent.RoleUser, update.Message.Text); err != nil {
+	userMessageID, err := store.AddMessage(ctx, session.ID, agent.RoleUser, update.Message.Text)
+	if err != nil {
 		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to store user message")
 	}
 
@@ -204,7 +205,7 @@ func handleMessage(
 
 	// 8. Query the LLM
 	log.Info().Int64("chat_id", chatID).Int64("session_id", session.ID).Msg("ai request sending")
-	response, err := querier.Query(ctx, messages)
+	result, err := querier.Query(ctx, messages)
 	if err != nil {
 		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to generate ai response")
 		tg.SendMessage(ctx, &tbot.SendMessageParams{
@@ -213,16 +214,27 @@ func handleMessage(
 		})
 		return
 	}
-	log.Info().Int64("chat_id", chatID).Int64("session_id", session.ID).Msg("ai response received")
+	log.Info().
+		Int64("chat_id", chatID).
+		Int64("session_id", session.ID).
+		Int("input_tokens", result.InputTokens).
+		Int("output_tokens", result.OutputTokens).
+		Int("total_tokens", result.TotalTokens).
+		Msg("ai response received")
 
-	// 9. Store the assistant response
-	if err := store.AddMessage(ctx, session.ID, agent.RoleAssistant, response); err != nil {
+	// 9. Record LLM request for usage tracking
+	if err := store.RecordLLMRequest(ctx, session.ID, userMessageID, result.InputTokens, result.OutputTokens, result.TotalTokens, cfg.Model); err != nil {
+		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to record llm request")
+	}
+
+	// 10. Store the assistant response
+	if _, err := store.AddMessage(ctx, session.ID, agent.RoleAssistant, result.Content); err != nil {
 		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to store bot message")
 	}
 
-	// 10. Send response to user
+	// 11. Send response to user
 	tg.SendMessage(ctx, &tbot.SendMessageParams{
 		ChatID: chatID,
-		Text:   response,
+		Text:   result.Content,
 	})
 }

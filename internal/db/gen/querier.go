@@ -9,16 +9,104 @@ import (
 )
 
 type Querier interface {
-	AddMessage(ctx context.Context, arg AddMessageParams) error
+	//AddMessage
+	//
+	//  INSERT INTO data.messages (session_id, role, content)
+	//  VALUES ($1, $2, $3)
+	//  RETURNING id
+	AddMessage(ctx context.Context, arg AddMessageParams) (int64, error)
+	//CountSessionMessages
+	//
+	//  SELECT COUNT(*)
+	//  FROM data.messages
+	//  WHERE session_id = $1
 	CountSessionMessages(ctx context.Context, sessionID int64) (int64, error)
-	CreateSession(ctx context.Context, arg CreateSessionParams) (DataSession, error)
-	CreateUser(ctx context.Context, arg CreateUserParams) (DataUser, error)
+	//CreateLLMRequest
+	//
+	//  INSERT INTO data.llm_requests (session_id, message_id, input_tokens, output_tokens, total_tokens, model)
+	//  VALUES ($1, $2, $3, $4, $5, $6)
+	//  RETURNING id, uuid, session_id, input_tokens, output_tokens, total_tokens, model, created_at, message_id
+	CreateLLMRequest(ctx context.Context, arg CreateLLMRequestParams) (*DataLlmRequest, error)
+	//CreateSession
+	//
+	//  INSERT INTO data.sessions (user_id, system_prompt)
+	//  VALUES ($1, $2)
+	//  RETURNING id, uuid, user_id, system_prompt, ended_at, created_at
+	CreateSession(ctx context.Context, arg CreateSessionParams) (*DataSession, error)
+	//CreateUser
+	//
+	//  INSERT INTO data.users (telegram_id, username, first_name, last_name, language_code)
+	//  VALUES ($1, $2, $3, $4, $5)
+	//  RETURNING id, uuid, telegram_id, username, first_name, last_name, language_code, created_at, updated_at
+	CreateUser(ctx context.Context, arg CreateUserParams) (*DataUser, error)
+	//EndSession
+	//
+	//  UPDATE data.sessions SET ended_at = NOW() WHERE id = $1
 	EndSession(ctx context.Context, id int64) error
-	GetActiveSession(ctx context.Context, userID int64) (DataSession, error)
-	GetSessionMessages(ctx context.Context, sessionID int64) ([]DataMessage, error)
-	GetUserByTelegramID(ctx context.Context, telegramID int64) (DataUser, error)
-	GetUserSessions(ctx context.Context, arg GetUserSessionsParams) ([]DataSession, error)
-	UpsertUser(ctx context.Context, arg UpsertUserParams) (DataUser, error)
+	//GetActiveSession
+	//
+	//  SELECT id, uuid, user_id, system_prompt, ended_at, created_at FROM data.sessions
+	//  WHERE user_id = $1 AND ended_at IS NULL
+	//  ORDER BY created_at DESC
+	//  LIMIT 1
+	GetActiveSession(ctx context.Context, userID int64) (*DataSession, error)
+	//GetSessionLLMRequests
+	//
+	//  SELECT id, uuid, session_id, input_tokens, output_tokens, total_tokens, model, created_at, message_id FROM data.llm_requests
+	//  WHERE session_id = $1
+	//  ORDER BY created_at ASC
+	GetSessionLLMRequests(ctx context.Context, sessionID int64) ([]*DataLlmRequest, error)
+	//GetSessionMessages
+	//
+	//  SELECT id, uuid, session_id, role, content, created_at
+	//  FROM data.messages
+	//  WHERE session_id = $1
+	//  ORDER BY created_at ASC
+	GetSessionMessages(ctx context.Context, sessionID int64) ([]*DataMessage, error)
+	//GetSessionTokenUsage
+	//
+	//  SELECT
+	//      COALESCE(SUM(input_tokens), 0)::INT AS total_input_tokens,
+	//      COALESCE(SUM(output_tokens), 0)::INT AS total_output_tokens,
+	//      COALESCE(SUM(total_tokens), 0)::INT AS total_tokens,
+	//      COUNT(*)::INT AS request_count
+	//  FROM data.llm_requests
+	//  WHERE session_id = $1
+	GetSessionTokenUsage(ctx context.Context, sessionID int64) (*GetSessionTokenUsageRow, error)
+	//GetUserByTelegramID
+	//
+	//  SELECT id, uuid, telegram_id, username, first_name, last_name, language_code, created_at, updated_at FROM data.users WHERE telegram_id = $1
+	GetUserByTelegramID(ctx context.Context, telegramID int64) (*DataUser, error)
+	//GetUserSessions
+	//
+	//  SELECT id, uuid, user_id, system_prompt, ended_at, created_at FROM data.sessions
+	//  WHERE user_id = $1
+	//  ORDER BY created_at DESC
+	//  LIMIT $2
+	GetUserSessions(ctx context.Context, arg GetUserSessionsParams) ([]*DataSession, error)
+	//GetUserTokenUsage
+	//
+	//  SELECT
+	//      COALESCE(SUM(lr.input_tokens), 0)::INT AS total_input_tokens,
+	//      COALESCE(SUM(lr.output_tokens), 0)::INT AS total_output_tokens,
+	//      COALESCE(SUM(lr.total_tokens), 0)::INT AS total_tokens,
+	//      COUNT(*)::INT AS request_count
+	//  FROM data.llm_requests lr
+	//  JOIN data.sessions s ON lr.session_id = s.id
+	//  WHERE s.user_id = $1
+	GetUserTokenUsage(ctx context.Context, userID int64) (*GetUserTokenUsageRow, error)
+	//UpsertUser
+	//
+	//  INSERT INTO data.users (telegram_id, username, first_name, last_name, language_code)
+	//  VALUES ($1, $2, $3, $4, $5)
+	//  ON CONFLICT (telegram_id) DO UPDATE
+	//  SET username = EXCLUDED.username,
+	//      first_name = EXCLUDED.first_name,
+	//      last_name = EXCLUDED.last_name,
+	//      language_code = EXCLUDED.language_code,
+	//      updated_at = NOW()
+	//  RETURNING id, uuid, telegram_id, username, first_name, last_name, language_code, created_at, updated_at
+	UpsertUser(ctx context.Context, arg UpsertUserParams) (*DataUser, error)
 }
 
 var _ Querier = (*Queries)(nil)

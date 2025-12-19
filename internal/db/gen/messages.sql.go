@@ -9,20 +9,28 @@ import (
 	"context"
 )
 
-const addMessage = `-- name: AddMessage :exec
+const addMessage = `-- name: AddMessage :one
 INSERT INTO data.messages (session_id, role, content)
 VALUES ($1, $2, $3)
+RETURNING id
 `
 
 type AddMessageParams struct {
-	SessionID int64
-	Role      string
-	Content   string
+	SessionID int64  `json:"session_id"`
+	Role      string `json:"role"`
+	Content   string `json:"content"`
 }
 
-func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
-	_, err := q.db.Exec(ctx, addMessage, arg.SessionID, arg.Role, arg.Content)
-	return err
+// AddMessage
+//
+//	INSERT INTO data.messages (session_id, role, content)
+//	VALUES ($1, $2, $3)
+//	RETURNING id
+func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) (int64, error) {
+	row := q.db.QueryRow(ctx, addMessage, arg.SessionID, arg.Role, arg.Content)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const countSessionMessages = `-- name: CountSessionMessages :one
@@ -31,6 +39,11 @@ FROM data.messages
 WHERE session_id = $1
 `
 
+// CountSessionMessages
+//
+//	SELECT COUNT(*)
+//	FROM data.messages
+//	WHERE session_id = $1
 func (q *Queries) CountSessionMessages(ctx context.Context, sessionID int64) (int64, error) {
 	row := q.db.QueryRow(ctx, countSessionMessages, sessionID)
 	var count int64
@@ -45,13 +58,19 @@ WHERE session_id = $1
 ORDER BY created_at ASC
 `
 
-func (q *Queries) GetSessionMessages(ctx context.Context, sessionID int64) ([]DataMessage, error) {
+// GetSessionMessages
+//
+//	SELECT id, uuid, session_id, role, content, created_at
+//	FROM data.messages
+//	WHERE session_id = $1
+//	ORDER BY created_at ASC
+func (q *Queries) GetSessionMessages(ctx context.Context, sessionID int64) ([]*DataMessage, error) {
 	rows, err := q.db.Query(ctx, getSessionMessages, sessionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []DataMessage
+	var items []*DataMessage
 	for rows.Next() {
 		var i DataMessage
 		if err := rows.Scan(
@@ -64,7 +83,7 @@ func (q *Queries) GetSessionMessages(ctx context.Context, sessionID int64) ([]Da
 		); err != nil {
 			return nil, err
 		}
-		items = append(items, i)
+		items = append(items, &i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
