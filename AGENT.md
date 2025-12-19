@@ -1,4 +1,4 @@
-This file provides guidance to coding agnets when working with code in this repository.
+This file provides guidance to coding agents when working with code in this repository.
 
 ## Build & Run Commands
 
@@ -35,23 +35,30 @@ Each package exposes an `fx.Module()` function that provides its dependencies:
 
 - **config** - Loads environment variables via `envconfig`
 - **log** - Provides `zerolog.Logger`
-- **agent** - Provides `bot.Service` implementation using langchain-go/OpenRouter
+- **agent** - Provides `Querier` for LLM interactions via langchain-go/OpenRouter
 - **bot** - Telegram bot with message handling, starts via fx lifecycle hook
 
-### Key Interfaces
+### Key Types
 
-The `bot.Service` interface (in `internal/bot/types.go`) defines the AI backend contract:
+The `agent` package defines:
 ```go
-type Service interface {
-    Reply(ctx context.Context, prompt string, history []Message) (Response, error)
+type Role string  // RoleSystem, RoleUser, RoleAssistant
+
+type Message struct {
+    Role    Role
+    Content string
+}
+
+type Querier interface {
+    Query(ctx context.Context, messages []Message) (string, error)
 }
 ```
 
-The `agent.Service` implements this interface using langchain-go's OpenAI-compatible client with OpenRouter.
+`OpenAIQuerier` implements `Querier` using langchain-go's OpenAI-compatible client with OpenRouter.
 
 ### Conversation Store
 
-`internal/bot/store.go` provides an in-memory conversation store keyed by Telegram chat ID. Thread-safe with `sync.RWMutex`.
+`internal/bot/store.go` provides an in-memory conversation store keyed by Telegram chat ID. Uses `agent.Message` for storage. Thread-safe with `sync.RWMutex`.
 
 ### Bot Commands
 

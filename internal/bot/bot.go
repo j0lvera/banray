@@ -5,6 +5,7 @@ import (
 
 	tbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/j0lvera/banray/internal/agent"
 	"github.com/j0lvera/banray/internal/config"
 	"github.com/rs/zerolog"
 	"go.uber.org/fx"
@@ -14,7 +15,7 @@ type Params struct {
 	fx.In
 
 	Config  *config.Config
-	Service Service
+	Querier agent.Querier
 }
 
 type Result struct {
@@ -25,13 +26,12 @@ type Result struct {
 }
 
 func New(lc fx.Lifecycle, p Params, log zerolog.Logger) (Result, error) {
-	// Create conversation store
 	store := NewStore()
 
 	opts := []tbot.Option{
 		tbot.WithDefaultHandler(
 			func(ctx context.Context, tg *tbot.Bot, update *models.Update) {
-				handleMessage(ctx, tg, update, p.Service, store, p.Config, &log)
+				handleMessage(ctx, tg, update, p.Querier, store, p.Config, &log)
 			},
 		),
 	}
@@ -77,9 +77,9 @@ func handleMessage(
 	ctx context.Context,
 	tg *tbot.Bot,
 	update *models.Update,
-	svc Service,
+	querier agent.Querier,
 	store *Store,
-	config *config.Config,
+	cfg *config.Config,
 	log *zerolog.Logger,
 ) {
 	chatID := update.Message.Chat.ID
@@ -98,7 +98,7 @@ func handleMessage(
 	}
 
 	// Check if we need to clear history due to exceeding the limit
-	if store.Length(chatID) >= config.HistoryLimit-1 {
+	if store.Length(chatID) >= cfg.HistoryLimit-1 {
 		store.Clear(chatID)
 		tg.SendMessage(
 			ctx, &tbot.SendMessageParams{
@@ -120,12 +120,21 @@ func handleMessage(
 		},
 	)
 
-	// Get conversation history
-	history := store.History(chatID, config.HistoryLimit)
+	// Build messages for the LLM
+	messages := []agent.Message{
+		{
+			Role:    agent.RoleSystem,
+			Content: "Provide brief, concise responses with a friendly and human tone.",
+		},
+	}
 
-	// Generate response using the AI service
+	// Add conversation history
+	history := store.History(chatID, cfg.HistoryLimit)
+	messages = append(messages, history...)
+
+	// Query the LLM
 	log.Info().Int64("chat_id", chatID).Msg("ai request sending")
-	response, err := svc.Reply(ctx, update.Message.Text, history)
+	response, err := querier.Query(ctx, messages)
 	if err != nil {
 		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to generate ai response")
 		tg.SendMessage(
@@ -139,13 +148,13 @@ func handleMessage(
 	log.Info().Int64("chat_id", chatID).Msg("ai response received")
 
 	// Store the bot response
-	store.AddBotMessage(chatID, response.Content)
+	store.AddBotMessage(chatID, response)
 
 	// Send the response back to the user
 	tg.SendMessage(
 		ctx, &tbot.SendMessageParams{
 			ChatID: chatID,
-			Text:   response.Content,
+			Text:   response,
 		},
 	)
 }

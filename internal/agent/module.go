@@ -1,38 +1,37 @@
 package agent
 
 import (
-	"github.com/j0lvera/banray/internal/bot"
 	"github.com/j0lvera/banray/internal/config"
 	"go.uber.org/fx"
 )
 
-// Params for creating an AI service
+// Params for creating a Querier
 type Params struct {
 	fx.In
 
 	Config *config.Config
 }
 
-// Result of creating an AI service
+// Result of creating a Querier
 type Result struct {
 	fx.Out
 
-	Service bot.Service
+	Querier Querier
 }
 
-// New creates a new AI service based on configuration
+// New creates a new Querier based on configuration
 func New(p Params) (Result, error) {
-	service, err := NewService(p.Config.APIKey, p.Config.BaseURL, p.Config.Model)
+	querier, err := NewOpenAIQuerier(p.Config.APIKey, p.Config.BaseURL, p.Config.Model)
 	if err != nil {
 		return Result{}, err
 	}
 
 	return Result{
-		Service: service,
+		Querier: querier,
 	}, nil
 }
 
-// Module provides the agent service
+// Module provides the agent Querier
 func Module() fx.Option {
 	return fx.Module(
 		"agent",
