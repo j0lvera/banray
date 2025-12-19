@@ -7,31 +7,37 @@ import (
 	"github.com/go-telegram/bot/models"
 	"github.com/j0lvera/banray/internal/agent"
 	"github.com/j0lvera/banray/internal/config"
+	"github.com/j0lvera/banray/internal/db"
 	"github.com/rs/zerolog"
 	"go.uber.org/fx"
 )
 
+const defaultSystemPrompt = "Provide brief, concise responses with a friendly and human tone. Do not use markdown formatting."
+
 type Params struct {
 	fx.In
 
-	Config  *config.Config
-	Querier agent.Querier
+	Config   *config.Config
+	Querier  agent.Querier
+	DBClient *db.Client
 }
 
 type Result struct {
 	fx.Out
 
-	Bot   *tbot.Bot
-	Store *agent.Store
+	Bot       *tbot.Bot
+	Store     *agent.Store
+	UserStore *agent.UserStore
 }
 
 func New(lc fx.Lifecycle, p Params, log zerolog.Logger) (Result, error) {
-	store := agent.NewStore()
+	store := agent.NewStore(p.DBClient)
+	userStore := agent.NewUserStore(p.DBClient)
 
 	opts := []tbot.Option{
 		tbot.WithDefaultHandler(
 			func(ctx context.Context, tg *tbot.Bot, update *models.Update) {
-				handleMessage(ctx, tg, update, p.Querier, store, p.Config, &log)
+				handleMessage(ctx, tg, update, p.Querier, store, userStore, p.Config, &log)
 			},
 		),
 	}
@@ -56,8 +62,9 @@ func New(lc fx.Lifecycle, p Params, log zerolog.Logger) (Result, error) {
 	)
 
 	return Result{
-		Bot:   tg,
-		Store: store,
+		Bot:       tg,
+		Store:     store,
+		UserStore: userStore,
 	}, nil
 }
 
@@ -79,82 +86,143 @@ func handleMessage(
 	update *models.Update,
 	querier agent.Querier,
 	store *agent.Store,
+	userStore *agent.UserStore,
 	cfg *config.Config,
 	log *zerolog.Logger,
 ) {
-	chatID := update.Message.Chat.ID
-
-	// Check for command to clear history
-	if update.Message.Text == "/clear" {
-		store.Clear(chatID)
-		tg.SendMessage(
-			ctx, &tbot.SendMessageParams{
-				ChatID: chatID,
-				Text:   "Conversation history cleared.",
-			},
-		)
-		log.Info().Int64("chat_id", chatID).Msg("history cleared")
+	// Guard against nil message
+	if update.Message == nil {
 		return
 	}
 
-	// Check if we need to clear history due to exceeding the limit
-	if store.Length(chatID) >= cfg.HistoryLimit-1 {
-		store.Clear(chatID)
-		tg.SendMessage(
-			ctx, &tbot.SendMessageParams{
-				ChatID: chatID,
-				Text:   "Conversation history was automatically cleared due to length.",
-			},
-		)
-		log.Info().Int64("chat_id", chatID).Msg("history auto-cleared")
+	chatID := update.Message.Chat.ID
+
+	// Guard against nil user
+	if update.Message.From == nil {
+		log.Warn().Int64("chat_id", chatID).Msg("received message without user info")
+		return
 	}
 
-	// Store the user message
-	store.AddMessage(chatID, agent.RoleUser, update.Message.Text)
-
-	// Send a "typing" action to show the bot is processing
-	tg.SendChatAction(
-		ctx, &tbot.SendChatActionParams{
-			ChatID: chatID,
-			Action: models.ChatActionTyping,
-		},
+	// 1. Upsert user from Telegram data
+	user, err := userStore.UpsertUser(
+		ctx,
+		update.Message.From.ID,
+		update.Message.From.Username,
+		update.Message.From.FirstName,
+		update.Message.From.LastName,
+		update.Message.From.LanguageCode,
 	)
+	if err != nil {
+		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to upsert user")
+		tg.SendMessage(ctx, &tbot.SendMessageParams{
+			ChatID: chatID,
+			Text:   "Sorry, I encountered an error. Please try again.",
+		})
+		return
+	}
 
-	// Build messages for the LLM
+	// 2. Handle /clear command
+	if update.Message.Text == "/clear" {
+		// Get active session to end it
+		session, err := store.GetOrCreateSession(ctx, user.ID, defaultSystemPrompt)
+		if err != nil {
+			log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to get session for clear")
+		} else {
+			if err := store.EndSession(ctx, session.ID); err != nil {
+				log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to end session")
+			}
+		}
+		tg.SendMessage(ctx, &tbot.SendMessageParams{
+			ChatID: chatID,
+			Text:   "Conversation cleared. Starting fresh!",
+		})
+		log.Info().Int64("chat_id", chatID).Int64("user_id", user.ID).Msg("session ended by user")
+		return
+	}
+
+	// 3. Get or create active session
+	session, err := store.GetOrCreateSession(ctx, user.ID, defaultSystemPrompt)
+	if err != nil {
+		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to get or create session")
+		tg.SendMessage(ctx, &tbot.SendMessageParams{
+			ChatID: chatID,
+			Text:   "Sorry, I encountered an error. Please try again.",
+		})
+		return
+	}
+
+	// 4. Check if session hit message limit
+	count, err := store.CountSessionMessages(ctx, session.ID)
+	if err != nil {
+		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to count session messages")
+	}
+	if count >= cfg.HistoryLimit {
+		// End current session and create new one
+		if err := store.EndSession(ctx, session.ID); err != nil {
+			log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to end session at limit")
+		}
+		session, err = store.CreateSession(ctx, user.ID, defaultSystemPrompt)
+		if err != nil {
+			log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to create new session")
+			tg.SendMessage(ctx, &tbot.SendMessageParams{
+				ChatID: chatID,
+				Text:   "Sorry, I encountered an error. Please try again.",
+			})
+			return
+		}
+		tg.SendMessage(ctx, &tbot.SendMessageParams{
+			ChatID: chatID,
+			Text:   "Starting a new conversation due to context limit.",
+		})
+		log.Info().Int64("chat_id", chatID).Int64("user_id", user.ID).Msg("session auto-rotated due to limit")
+	}
+
+	// 5. Store the user message
+	if err := store.AddMessage(ctx, session.ID, agent.RoleUser, update.Message.Text); err != nil {
+		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to store user message")
+	}
+
+	// 6. Send typing indicator
+	tg.SendChatAction(ctx, &tbot.SendChatActionParams{
+		ChatID: chatID,
+		Action: models.ChatActionTyping,
+	})
+
+	// 7. Build messages for LLM (system prompt + history)
 	messages := []agent.Message{
 		{
 			Role:    agent.RoleSystem,
-			Content: "Provide brief, concise responses with a friendly and human tone.",
+			Content: defaultSystemPrompt,
 		},
 	}
 
-	// Add conversation history
-	history := store.History(chatID, cfg.HistoryLimit)
+	history, err := store.GetSessionMessages(ctx, session.ID)
+	if err != nil {
+		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to get session messages")
+	}
 	messages = append(messages, history...)
 
-	// Query the LLM
-	log.Info().Int64("chat_id", chatID).Msg("ai request sending")
+	// 8. Query the LLM
+	log.Info().Int64("chat_id", chatID).Int64("session_id", session.ID).Msg("ai request sending")
 	response, err := querier.Query(ctx, messages)
 	if err != nil {
 		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to generate ai response")
-		tg.SendMessage(
-			ctx, &tbot.SendMessageParams{
-				ChatID: chatID,
-				Text:   "Sorry, I encountered an error while processing your request.",
-			},
-		)
+		tg.SendMessage(ctx, &tbot.SendMessageParams{
+			ChatID: chatID,
+			Text:   "Sorry, I encountered an error while processing your request.",
+		})
 		return
 	}
-	log.Info().Int64("chat_id", chatID).Msg("ai response received")
+	log.Info().Int64("chat_id", chatID).Int64("session_id", session.ID).Msg("ai response received")
 
-	// Store the bot response
-	store.AddMessage(chatID, agent.RoleAssistant, response)
+	// 9. Store the assistant response
+	if err := store.AddMessage(ctx, session.ID, agent.RoleAssistant, response); err != nil {
+		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to store bot message")
+	}
 
-	// Send the response back to the user
-	tg.SendMessage(
-		ctx, &tbot.SendMessageParams{
-			ChatID: chatID,
-			Text:   response,
-		},
-	)
+	// 10. Send response to user
+	tg.SendMessage(ctx, &tbot.SendMessageParams{
+		ChatID: chatID,
+		Text:   response,
+	})
 }

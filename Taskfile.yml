@@ -1,7 +1,48 @@
 version: 3
 
 tasks:
-  ai:
-    desc: Run AI assistant
+  build:
+    desc: Build the application
     cmds:
-      - aider --model openrouter/anthropic/claude-3.7-sonnet
+      - go build -o bin/banray ./cmd/main
+
+  run:
+    desc: Run the bot
+    cmds:
+      - go run ./cmd/main
+
+  # goose
+  migrate:up:
+    desc: Run all pending migrations
+    cmds:
+      - goose up
+
+  migrate:up-one:
+    desc: Run one migration
+    cmds:
+      - goose up up-by-one
+
+  migrate:drop:
+    desc: Drop all migrations
+    cmds:
+      - goose down-to 0
+
+  migrate:down:
+    desc: Rollback last migration
+    cmds:
+      - goose down
+
+  migrate:status:
+    desc: Show migration status
+    cmds:
+      - goose status
+
+  migrate:new:
+    desc: Create a new migration file
+    cmds:
+      - goose create {{.CLI_ARGS}} sql
+
+  generate:
+    desc: Generate sqlc code
+    cmds:
+      - sqlc generate

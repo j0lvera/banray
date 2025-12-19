@@ -11,6 +11,7 @@ type Config struct {
 	BaseURL      string `envconfig:"OPENROUTER_BASE_URL" default:"https://openrouter.ai/api/v1"`
 	Model        string `envconfig:"OPENROUTER_MODEL" default:"anthropic/claude-3.5-sonnet"`
 	HistoryLimit int    `envconfig:"HISTORY_LIMIT" default:"10"`
+	DatabaseURL  string `envconfig:"DATABASE_URL" required:"true"`
 }
 
 // LoadEnv loads the configuration from environment variables
