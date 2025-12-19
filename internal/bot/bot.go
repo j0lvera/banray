@@ -2,8 +2,6 @@ package bot
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	tbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -33,7 +31,7 @@ func New(lc fx.Lifecycle, p Params, log zerolog.Logger) (Result, error) {
 	opts := []tbot.Option{
 		tbot.WithDefaultHandler(
 			func(ctx context.Context, tg *tbot.Bot, update *models.Update) {
-				handleMessage(ctx, tg, update, p.Service, store, p.Config)
+				handleMessage(ctx, tg, update, p.Service, store, p.Config, &log)
 			},
 		),
 	}
@@ -82,85 +80,72 @@ func handleMessage(
 	svc Service,
 	store *Store,
 	config *config.Config,
+	log *zerolog.Logger,
 ) {
+	chatID := update.Message.Chat.ID
+
 	// Check for command to clear history
 	if update.Message.Text == "/clear" {
-		store.Clear(update.Message.Chat.ID)
+		store.Clear(chatID)
 		tg.SendMessage(
 			ctx, &tbot.SendMessageParams{
-				ChatID: update.Message.Chat.ID,
+				ChatID: chatID,
 				Text:   "Conversation history cleared.",
 			},
 		)
+		log.Info().Int64("chat_id", chatID).Msg("history cleared")
 		return
 	}
 
 	// Check if we need to clear history due to exceeding the limit
-	// We check before adding the new message, and we account for the fact
-	// that we'll be adding both a user message and a bot response (2 messages)
-	if store.Length(update.Message.Chat.ID) >= config.HistoryLimit-1 {
-		store.Clear(update.Message.Chat.ID)
-		// Optionally notify the user that history was cleared
+	if store.Length(chatID) >= config.HistoryLimit-1 {
+		store.Clear(chatID)
 		tg.SendMessage(
 			ctx, &tbot.SendMessageParams{
-				ChatID: update.Message.Chat.ID,
+				ChatID: chatID,
 				Text:   "Conversation history was automatically cleared due to length.",
 			},
 		)
+		log.Info().Int64("chat_id", chatID).Msg("history auto-cleared")
 	}
 
 	// Store the user message
-	store.AddUserMessage(update.Message.Chat.ID, update.Message.Text)
+	store.AddUserMessage(chatID, update.Message.Text)
 
 	// Send a "typing" action to show the bot is processing
 	tg.SendChatAction(
 		ctx, &tbot.SendChatActionParams{
-			ChatID: update.Message.Chat.ID,
+			ChatID: chatID,
 			Action: models.ChatActionTyping,
 		},
 	)
 
 	// Get conversation history
-	history := store.History(
-		update.Message.Chat.ID, config.HistoryLimit,
-	)
+	history := store.History(chatID, config.HistoryLimit)
 
 	// Generate response using the AI service
+	log.Info().Int64("chat_id", chatID).Msg("ai request sending")
 	response, err := svc.Reply(ctx, update.Message.Text, history)
 	if err != nil {
-		fmt.Println("Error generating response:", err)
+		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to generate ai response")
 		tg.SendMessage(
 			ctx, &tbot.SendMessageParams{
-				ChatID: update.Message.Chat.ID,
+				ChatID: chatID,
 				Text:   "Sorry, I encountered an error while processing your request.",
 			},
 		)
 		return
 	}
+	log.Info().Int64("chat_id", chatID).Msg("ai response received")
 
 	// Store the bot response
-	store.AddBotMessage(update.Message.Chat.ID, response.Content)
-
-	// Create message params
-	params := &tbot.SendMessageParams{
-		ChatID: update.Message.Chat.ID,
-		Text:   response.Content,
-	}
-
-	// If the response contains markdown elements, enable markdown parsing
-	//if containsCodeBlock(response.Content) {
-	//	params.ParseMode = models.ParseModeMarkdown
-	//	params.Text = response.Content
-	//} else {
-	//	params.Text = response.Content
-	//}
+	store.AddBotMessage(chatID, response.Content)
 
 	// Send the response back to the user
-	tg.SendMessage(ctx, params)
-}
-
-// containsCodeBlock checks if text contains any markdown elements
-func containsCodeBlock(text string) bool {
-	// Check for any markdown elements
-	return strings.Contains(text, "```")
+	tg.SendMessage(
+		ctx, &tbot.SendMessageParams{
+			ChatID: chatID,
+			Text:   response.Content,
+		},
+	)
 }

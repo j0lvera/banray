@@ -6,9 +6,11 @@ import (
 )
 
 type Config struct {
-	Token       string `envconfig:"TELEGRAM_API_TOKEN"`
-	Model       string `envconfig:"MODEL" default:"llama3"`
-	HistoryLimit int    `envconfig:"HISTORY_LIMIT" default:"10"` // Default to 10 messages in history
+	Token        string `envconfig:"TELEGRAM_API_TOKEN" required:"true"`
+	APIKey       string `envconfig:"OPENROUTER_API_KEY" required:"true"`
+	BaseURL      string `envconfig:"OPENROUTER_BASE_URL" default:"https://openrouter.ai/api/v1"`
+	Model        string `envconfig:"OPENROUTER_MODEL" default:"anthropic/claude-3.5-sonnet"`
+	HistoryLimit int    `envconfig:"HISTORY_LIMIT" default:"10"`
 }
 
 // LoadEnv loads the configuration from environment variables

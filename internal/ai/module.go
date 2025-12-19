@@ -22,7 +22,7 @@ type Result struct {
 
 // New creates a new AI service based on configuration
 func New(p Params) (Result, error) {
-	service, err := NewService(p.Config.Model)
+	service, err := NewService(p.Config.APIKey, p.Config.BaseURL, p.Config.Model)
 	if err != nil {
 		return Result{}, err
 	}

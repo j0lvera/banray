@@ -5,28 +5,27 @@ import (
 	"fmt"
 
 	"github.com/j0lvera/banray/internal/bot"
-	"github.com/ollama/ollama/api"
+	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/openai"
 )
 
-// Service implements the bot.Service interface
+// Service implements the bot.Service interface using langchain-go
 type Service struct {
-	client *api.Client
-	model  string
+	client llms.Model
 }
 
-func NewService(model string) (*Service, error) {
-	client, err := api.ClientFromEnvironment()
+func NewService(apiKey, baseURL, model string) (*Service, error) {
+	client, err := openai.New(
+		openai.WithToken(apiKey),
+		openai.WithBaseURL(baseURL),
+		openai.WithModel(model),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create AI client: %w", err)
-	}
-
-	if client == nil {
-		return nil, fmt.Errorf("AI client is nil after initialization")
+		return nil, fmt.Errorf("failed to create LLM client: %w", err)
 	}
 
 	return &Service{
 		client: client,
-		model:  model,
 	}, nil
 }
 
@@ -34,12 +33,12 @@ func NewService(model string) (*Service, error) {
 func (s *Service) Reply(
 	ctx context.Context, prompt string, history []bot.Message,
 ) (bot.Response, error) {
-	// Convert bot.Message history to api.Message format
-	msgs := []api.Message{
-		{
-			Role:    "system",
-			Content: "Provide brief, concise responses with a friendly and human tone.",
-		},
+	// Build messages starting with system prompt
+	msgs := []llms.MessageContent{
+		llms.TextParts(
+			llms.ChatMessageTypeSystem,
+			"Provide brief, concise responses with a friendly and human tone.",
+		),
 	}
 
 	// Add conversation history
@@ -49,39 +48,32 @@ func (s *Service) Reply(
 			continue
 		}
 
-		msgs = append(
-			msgs, api.Message{
-				Role:    msg.Role,
-				Content: msg.Content,
-			},
-		)
+		var msgType llms.ChatMessageType
+		switch msg.Role {
+		case "user":
+			msgType = llms.ChatMessageTypeHuman
+		case "assistant":
+			msgType = llms.ChatMessageTypeAI
+		default:
+			continue
+		}
+
+		msgs = append(msgs, llms.TextParts(msgType, msg.Content))
 	}
 
 	// Add the current prompt
-	msgs = append(
-		msgs, api.Message{
-			Role:    "user",
-			Content: prompt,
-		},
-	)
+	msgs = append(msgs, llms.TextParts(llms.ChatMessageTypeHuman, prompt))
 
-	streamFalse := false
-	req := &api.ChatRequest{
-		Model:    s.model,
-		Messages: msgs,
-		Stream:   &streamFalse,
+	resp, err := s.client.GenerateContent(ctx, msgs)
+	if err != nil {
+		return bot.Response{}, fmt.Errorf("ai service generate error: %w", err)
 	}
 
-	var result bot.Response
-
-	resFn := func(resp api.ChatResponse) error {
-		result.Content = resp.Message.Content
-		return nil
+	if len(resp.Choices) == 0 {
+		return bot.Response{}, fmt.Errorf("no choices returned from model")
 	}
 
-	if err := s.client.Chat(ctx, req, resFn); err != nil {
-		return bot.Response{}, fmt.Errorf("ai service chat error: %w", err)
-	}
-
-	return result, nil
+	return bot.Response{
+		Content: resp.Choices[0].Content,
+	}, nil
 }
