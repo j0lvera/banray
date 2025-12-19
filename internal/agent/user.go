@@ -19,7 +19,7 @@ func NewUserStore(client *db.Client) *UserStore {
 }
 
 // UpsertUser creates or updates a user from Telegram data
-func (s *UserStore) UpsertUser(ctx context.Context, telegramID int64, username, firstName, lastName, languageCode string) (dbgen.DataUser, error) {
+func (s *UserStore) UpsertUser(ctx context.Context, telegramID int64, username, firstName, lastName, languageCode string) (*dbgen.DataUser, error) {
 	return s.client.Queries.UpsertUser(ctx, dbgen.UpsertUserParams{
 		TelegramID:   telegramID,
 		Username:     pgtype.Text{String: username, Valid: username != ""},
@@ -30,6 +30,6 @@ func (s *UserStore) UpsertUser(ctx context.Context, telegramID int64, username, 
 }
 
 // GetUserByTelegramID retrieves a user by their Telegram ID
-func (s *UserStore) GetUserByTelegramID(ctx context.Context, telegramID int64) (dbgen.DataUser, error) {
+func (s *UserStore) GetUserByTelegramID(ctx context.Context, telegramID int64) (*dbgen.DataUser, error) {
 	return s.client.Queries.GetUserByTelegramID(ctx, telegramID)
 }

@@ -18,14 +18,19 @@ RETURNING id, uuid, telegram_id, username, first_name, last_name, language_code,
 `
 
 type CreateUserParams struct {
-	TelegramID   int64
-	Username     pgtype.Text
-	FirstName    pgtype.Text
-	LastName     pgtype.Text
-	LanguageCode pgtype.Text
+	TelegramID   int64       `json:"telegram_id"`
+	Username     pgtype.Text `json:"username"`
+	FirstName    pgtype.Text `json:"first_name"`
+	LastName     pgtype.Text `json:"last_name"`
+	LanguageCode pgtype.Text `json:"language_code"`
 }
 
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (DataUser, error) {
+// CreateUser
+//
+//	INSERT INTO data.users (telegram_id, username, first_name, last_name, language_code)
+//	VALUES ($1, $2, $3, $4, $5)
+//	RETURNING id, uuid, telegram_id, username, first_name, last_name, language_code, created_at, updated_at
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (*DataUser, error) {
 	row := q.db.QueryRow(ctx, createUser,
 		arg.TelegramID,
 		arg.Username,
@@ -45,14 +50,17 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (DataUse
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
-	return i, err
+	return &i, err
 }
 
 const getUserByTelegramID = `-- name: GetUserByTelegramID :one
 SELECT id, uuid, telegram_id, username, first_name, last_name, language_code, created_at, updated_at FROM data.users WHERE telegram_id = $1
 `
 
-func (q *Queries) GetUserByTelegramID(ctx context.Context, telegramID int64) (DataUser, error) {
+// GetUserByTelegramID
+//
+//	SELECT id, uuid, telegram_id, username, first_name, last_name, language_code, created_at, updated_at FROM data.users WHERE telegram_id = $1
+func (q *Queries) GetUserByTelegramID(ctx context.Context, telegramID int64) (*DataUser, error) {
 	row := q.db.QueryRow(ctx, getUserByTelegramID, telegramID)
 	var i DataUser
 	err := row.Scan(
@@ -66,7 +74,7 @@ func (q *Queries) GetUserByTelegramID(ctx context.Context, telegramID int64) (Da
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
-	return i, err
+	return &i, err
 }
 
 const upsertUser = `-- name: UpsertUser :one
@@ -82,14 +90,25 @@ RETURNING id, uuid, telegram_id, username, first_name, last_name, language_code,
 `
 
 type UpsertUserParams struct {
-	TelegramID   int64
-	Username     pgtype.Text
-	FirstName    pgtype.Text
-	LastName     pgtype.Text
-	LanguageCode pgtype.Text
+	TelegramID   int64       `json:"telegram_id"`
+	Username     pgtype.Text `json:"username"`
+	FirstName    pgtype.Text `json:"first_name"`
+	LastName     pgtype.Text `json:"last_name"`
+	LanguageCode pgtype.Text `json:"language_code"`
 }
 
-func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (DataUser, error) {
+// UpsertUser
+//
+//	INSERT INTO data.users (telegram_id, username, first_name, last_name, language_code)
+//	VALUES ($1, $2, $3, $4, $5)
+//	ON CONFLICT (telegram_id) DO UPDATE
+//	SET username = EXCLUDED.username,
+//	    first_name = EXCLUDED.first_name,
+//	    last_name = EXCLUDED.last_name,
+//	    language_code = EXCLUDED.language_code,
+//	    updated_at = NOW()
+//	RETURNING id, uuid, telegram_id, username, first_name, last_name, language_code, created_at, updated_at
+func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (*DataUser, error) {
 	row := q.db.QueryRow(ctx, upsertUser,
 		arg.TelegramID,
 		arg.Username,
@@ -109,5 +128,5 @@ func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (DataUse
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
-	return i, err
+	return &i, err
 }

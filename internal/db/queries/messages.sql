@@ -1,6 +1,7 @@
--- name: AddMessage :exec
+-- name: AddMessage :one
 INSERT INTO data.messages (session_id, role, content)
-VALUES ($1, $2, $3);
+VALUES ($1, $2, $3)
+RETURNING id;
 
 -- name: GetSessionMessages :many
 SELECT id, uuid, session_id, role, content, created_at

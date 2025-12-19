@@ -8,32 +8,44 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type DataLlmRequest struct {
+	ID           int64              `json:"id"`
+	Uuid         string             `json:"uuid"`
+	SessionID    int64              `json:"session_id"`
+	InputTokens  int32              `json:"input_tokens"`
+	OutputTokens int32              `json:"output_tokens"`
+	TotalTokens  int32              `json:"total_tokens"`
+	Model        string             `json:"model"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	MessageID    pgtype.Int8        `json:"message_id"`
+}
+
 type DataMessage struct {
-	ID        int64
-	Uuid      string
-	SessionID int64
-	Role      string
-	Content   string
-	CreatedAt pgtype.Timestamptz
+	ID        int64              `json:"id"`
+	Uuid      string             `json:"uuid"`
+	SessionID int64              `json:"session_id"`
+	Role      string             `json:"role"`
+	Content   string             `json:"content"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type DataSession struct {
-	ID           int64
-	Uuid         string
-	UserID       int64
-	SystemPrompt pgtype.Text
-	EndedAt      pgtype.Timestamptz
-	CreatedAt    pgtype.Timestamptz
+	ID           int64              `json:"id"`
+	Uuid         string             `json:"uuid"`
+	UserID       int64              `json:"user_id"`
+	SystemPrompt pgtype.Text        `json:"system_prompt"`
+	EndedAt      pgtype.Timestamptz `json:"ended_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
 type DataUser struct {
-	ID           int64
-	Uuid         string
-	TelegramID   int64
-	Username     pgtype.Text
-	FirstName    pgtype.Text
-	LastName     pgtype.Text
-	LanguageCode pgtype.Text
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
+	ID           int64              `json:"id"`
+	Uuid         string             `json:"uuid"`
+	TelegramID   int64              `json:"telegram_id"`
+	Username     pgtype.Text        `json:"username"`
+	FirstName    pgtype.Text        `json:"first_name"`
+	LastName     pgtype.Text        `json:"last_name"`
+	LanguageCode pgtype.Text        `json:"language_code"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
