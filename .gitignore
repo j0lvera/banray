@@ -204,3 +204,6 @@ bin/
 
 # Context
 .context
+
+# Air
+tmp/

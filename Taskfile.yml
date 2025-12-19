@@ -11,6 +11,11 @@ tasks:
     cmds:
       - go run ./cmd/main
 
+  dev:
+    desc: Run with live reload (air)
+    cmds:
+      - air
+
   # goose
   migrate:up:
     desc: Run all pending migrations
