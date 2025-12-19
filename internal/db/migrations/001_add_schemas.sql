@@ -1,0 +1,7 @@
+-- +goose Up
+CREATE SCHEMA IF NOT EXISTS data;
+CREATE SCHEMA IF NOT EXISTS utils;
+
+-- +goose Down
+DROP SCHEMA IF EXISTS utils;
+DROP SCHEMA IF EXISTS data;

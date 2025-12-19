@@ -1,88 +1,85 @@
 package agent
 
-import "sync"
+import (
+	"context"
+	"errors"
 
-// Conversation represents a conversation history
-type Conversation struct {
-	Messages []Message
-	mu       sync.Mutex
-}
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/j0lvera/banray/internal/db"
+	dbgen "github.com/j0lvera/banray/internal/db/gen"
+)
 
-// Store manages conversation histories for multiple sessions
+// Store manages conversation sessions and messages using PostgreSQL
 type Store struct {
-	conversations map[int64]*Conversation
-	mu            sync.RWMutex
+	client *db.Client
 }
 
 // NewStore creates a new conversation store
-func NewStore() *Store {
-	return &Store{
-		conversations: make(map[int64]*Conversation),
-	}
+func NewStore(client *db.Client) *Store {
+	return &Store{client: client}
 }
 
-// AddMessage adds a message to the conversation history
-func (s *Store) AddMessage(conversationID int64, role Role, content string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	conv, exists := s.conversations[conversationID]
-	if !exists {
-		conv = &Conversation{
-			Messages: []Message{},
+// GetOrCreateSession returns the active session for a user, creating one if none exists
+func (s *Store) GetOrCreateSession(ctx context.Context, userID int64, systemPrompt string) (dbgen.DataSession, error) {
+	session, err := s.client.Queries.GetActiveSession(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// No active session, create one
+			return s.client.Queries.CreateSession(ctx, dbgen.CreateSessionParams{
+				UserID:       userID,
+				SystemPrompt: pgtype.Text{String: systemPrompt, Valid: systemPrompt != ""},
+			})
 		}
-		s.conversations[conversationID] = conv
+		return dbgen.DataSession{}, err
 	}
+	return session, nil
+}
 
-	conv.mu.Lock()
-	defer conv.mu.Unlock()
-	conv.Messages = append(conv.Messages, Message{
-		Role:    role,
-		Content: content,
+// CreateSession creates a new session for a user
+func (s *Store) CreateSession(ctx context.Context, userID int64, systemPrompt string) (dbgen.DataSession, error) {
+	return s.client.Queries.CreateSession(ctx, dbgen.CreateSessionParams{
+		UserID:       userID,
+		SystemPrompt: pgtype.Text{String: systemPrompt, Valid: systemPrompt != ""},
 	})
 }
 
-// History returns the conversation history
-// Limited to the most recent 'limit' messages
-func (s *Store) History(conversationID int64, limit int) []Message {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	conv, exists := s.conversations[conversationID]
-	if !exists {
-		return []Message{}
-	}
-
-	conv.mu.Lock()
-	defer conv.mu.Unlock()
-
-	messages := conv.Messages
-	if limit > 0 && len(messages) > limit {
-		return messages[len(messages)-limit:]
-	}
-	return messages
+// EndSession marks a session as ended
+func (s *Store) EndSession(ctx context.Context, sessionID int64) error {
+	return s.client.Queries.EndSession(ctx, sessionID)
 }
 
-// Clear clears the conversation history
-func (s *Store) Clear(conversationID int64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	delete(s.conversations, conversationID)
+// AddMessage adds a message to a session
+func (s *Store) AddMessage(ctx context.Context, sessionID int64, role Role, content string) error {
+	return s.client.Queries.AddMessage(ctx, dbgen.AddMessageParams{
+		SessionID: sessionID,
+		Role:      string(role),
+		Content:   content,
+	})
 }
 
-// Length returns the number of messages in the conversation
-func (s *Store) Length(conversationID int64) int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	conv, exists := s.conversations[conversationID]
-	if !exists {
-		return 0
+// GetSessionMessages returns all messages in a session
+func (s *Store) GetSessionMessages(ctx context.Context, sessionID int64) ([]Message, error) {
+	rows, err := s.client.Queries.GetSessionMessages(ctx, sessionID)
+	if err != nil {
+		return nil, err
 	}
 
-	conv.mu.Lock()
-	defer conv.mu.Unlock()
+	messages := make([]Message, len(rows))
+	for i, row := range rows {
+		messages[i] = Message{
+			Role:    Role(row.Role),
+			Content: row.Content,
+		}
+	}
+	return messages, nil
+}
 
-	return len(conv.Messages)
+// CountSessionMessages returns the number of messages in a session
+func (s *Store) CountSessionMessages(ctx context.Context, sessionID int64) (int, error) {
+	count, err := s.client.Queries.CountSessionMessages(ctx, sessionID)
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
 }
