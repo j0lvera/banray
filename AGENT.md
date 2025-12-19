@@ -35,7 +35,7 @@ Each package exposes an `fx.Module()` function that provides its dependencies:
 
 - **config** - Loads environment variables via `envconfig`
 - **log** - Provides `zerolog.Logger`
-- **ai** - Provides `bot.Service` implementation using langchain-go/OpenRouter
+- **agent** - Provides `bot.Service` implementation using langchain-go/OpenRouter
 - **bot** - Telegram bot with message handling, starts via fx lifecycle hook
 
 ### Key Interfaces
@@ -47,7 +47,7 @@ type Service interface {
 }
 ```
 
-The `ai.Service` implements this interface using langchain-go's OpenAI-compatible client with OpenRouter.
+The `agent.Service` implements this interface using langchain-go's OpenAI-compatible client with OpenRouter.
 
 ### Conversation Store
 

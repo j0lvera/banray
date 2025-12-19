@@ -1,4 +1,4 @@
-package ai
+package agent
 
 import (
 	"github.com/j0lvera/banray/internal/bot"
@@ -32,10 +32,10 @@ func New(p Params) (Result, error) {
 	}, nil
 }
 
-// Module provides the AI service
+// Module provides the agent service
 func Module() fx.Option {
 	return fx.Module(
-		"ai",
+		"agent",
 		fx.Provide(
 			New,
 		),

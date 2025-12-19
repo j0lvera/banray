@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/ipfans/fxlogger"
-	"github.com/j0lvera/banray/internal/ai"
+	"github.com/j0lvera/banray/internal/agent"
 	"github.com/j0lvera/banray/internal/bot"
 	"github.com/j0lvera/banray/internal/config"
 	"github.com/j0lvera/banray/internal/log"
@@ -14,7 +14,7 @@ func main() {
 	logger := log.NewFxLogger()
 
 	fx.New(
-		ai.Module(),
+		agent.Module(),
 		bot.Module(),
 		log.Module(),
 		config.Module(),
