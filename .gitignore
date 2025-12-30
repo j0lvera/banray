@@ -207,3 +207,6 @@ bin/
 
 # Air
 tmp/
+
+# User config
+config.toml

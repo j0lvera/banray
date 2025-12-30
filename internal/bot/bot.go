@@ -2,6 +2,8 @@ package bot
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	tbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -11,8 +13,6 @@ import (
 	"github.com/rs/zerolog"
 	"go.uber.org/fx"
 )
-
-const defaultSystemPrompt = "Provide brief, concise responses with a friendly and human tone. Do not use markdown formatting."
 
 type Params struct {
 	fx.In
@@ -124,7 +124,7 @@ func handleMessage(
 	// 2. Handle /clear command
 	if update.Message.Text == "/clear" {
 		// Get active session to end it
-		session, err := store.GetOrCreateSession(ctx, user.ID, defaultSystemPrompt)
+		session, err := store.GetOrCreateSession(ctx, user.ID, cfg.SimplePrompt())
 		if err != nil {
 			log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to get session for clear")
 		} else {
@@ -141,7 +141,7 @@ func handleMessage(
 	}
 
 	// 3. Get or create active session
-	session, err := store.GetOrCreateSession(ctx, user.ID, defaultSystemPrompt)
+	session, err := store.GetOrCreateSession(ctx, user.ID, cfg.SimplePrompt())
 	if err != nil {
 		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to get or create session")
 		tg.SendMessage(ctx, &tbot.SendMessageParams{
@@ -161,7 +161,7 @@ func handleMessage(
 		if err := store.EndSession(ctx, session.ID); err != nil {
 			log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to end session at limit")
 		}
-		session, err = store.CreateSession(ctx, user.ID, defaultSystemPrompt)
+		session, err = store.CreateSession(ctx, user.ID, cfg.SimplePrompt())
 		if err != nil {
 			log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to create new session")
 			tg.SendMessage(ctx, &tbot.SendMessageParams{
@@ -189,22 +189,42 @@ func handleMessage(
 		Action: models.ChatActionTyping,
 	})
 
-	// 7. Build messages for LLM (system prompt + history)
+	// Route to agentic or simple mode
+	if cfg.AgenticMode {
+		handleAgenticMessage(ctx, tg, chatID, session.ID, userMessageID, update.Message.Text, querier, store, cfg, log)
+	} else {
+		handleSimpleMessage(ctx, tg, chatID, session.ID, userMessageID, querier, store, cfg, log)
+	}
+}
+
+// handleSimpleMessage handles messages in simple (non-agentic) mode
+func handleSimpleMessage(
+	ctx context.Context,
+	tg *tbot.Bot,
+	chatID int64,
+	sessionID int64,
+	userMessageID int64,
+	querier agent.Querier,
+	store *agent.Store,
+	cfg *config.Config,
+	log *zerolog.Logger,
+) {
+	// Build messages for LLM (system prompt + history)
 	messages := []agent.Message{
 		{
 			Role:    agent.RoleSystem,
-			Content: defaultSystemPrompt,
+			Content: cfg.SimplePrompt(),
 		},
 	}
 
-	history, err := store.GetSessionMessages(ctx, session.ID)
+	history, err := store.GetSessionMessages(ctx, sessionID)
 	if err != nil {
 		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to get session messages")
 	}
 	messages = append(messages, history...)
 
-	// 8. Query the LLM
-	log.Info().Int64("chat_id", chatID).Int64("session_id", session.ID).Msg("ai request sending")
+	// Query the LLM
+	log.Info().Int64("chat_id", chatID).Int64("session_id", sessionID).Msg("ai request sending")
 	result, err := querier.Query(ctx, messages)
 	if err != nil {
 		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to generate ai response")
@@ -216,25 +236,136 @@ func handleMessage(
 	}
 	log.Info().
 		Int64("chat_id", chatID).
-		Int64("session_id", session.ID).
+		Int64("session_id", sessionID).
 		Int("input_tokens", result.InputTokens).
 		Int("output_tokens", result.OutputTokens).
 		Int("total_tokens", result.TotalTokens).
 		Msg("ai response received")
 
-	// 9. Record LLM request for usage tracking
-	if err := store.RecordLLMRequest(ctx, session.ID, userMessageID, result.InputTokens, result.OutputTokens, result.TotalTokens, cfg.Model); err != nil {
+	// Record LLM request for usage tracking
+	if err := store.RecordLLMRequest(ctx, sessionID, userMessageID, result.InputTokens, result.OutputTokens, result.TotalTokens, cfg.Model); err != nil {
 		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to record llm request")
 	}
 
-	// 10. Store the assistant response
-	if _, err := store.AddMessage(ctx, session.ID, agent.RoleAssistant, result.Content); err != nil {
+	// Store the assistant response
+	if _, err := store.AddMessage(ctx, sessionID, agent.RoleAssistant, result.Content); err != nil {
 		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to store bot message")
 	}
 
-	// 11. Send response to user
+	// Send response to user
 	tg.SendMessage(ctx, &tbot.SendMessageParams{
 		ChatID: chatID,
 		Text:   result.Content,
+	})
+}
+
+// handleAgenticMessage handles messages in agentic mode with bash access
+func handleAgenticMessage(
+	ctx context.Context,
+	tg *tbot.Bot,
+	chatID int64,
+	sessionID int64,
+	userMessageID int64,
+	userText string,
+	querier agent.Querier,
+	store *agent.Store,
+	cfg *config.Config,
+	log *zerolog.Logger,
+) {
+	// Load conversation history (excluding the current message we just stored)
+	allMessages, err := store.GetSessionMessages(ctx, sessionID)
+	if err != nil {
+		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to get session messages")
+	}
+
+	// Exclude the last message (the one we just stored) since we pass userText separately
+	var history []agent.Message
+	if len(allMessages) > 1 {
+		history = allMessages[:len(allMessages)-1]
+	}
+
+	// Create runner config
+	runnerConfig := agent.RunnerConfig{
+		MaxSteps:         cfg.MaxSteps,
+		CommandTimeout:   cfg.CommandTimeout,
+		WorkingDir:       cfg.WorkingDir,
+		SystemPrompt:     cfg.AgentPrompt(),
+		ContextThreshold: cfg.ContextThreshold,
+	}
+
+	// Create the runner
+	runner := agent.NewRunner(runnerConfig, querier, log)
+
+	// Start a goroutine to send typing indicators periodically
+	typingCtx, cancelTyping := context.WithCancel(ctx)
+	defer cancelTyping()
+	go func() {
+		ticker := time.NewTicker(4 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-typingCtx.Done():
+				return
+			case <-ticker.C:
+				tg.SendChatAction(typingCtx, &tbot.SendChatActionParams{
+					ChatID: chatID,
+					Action: models.ChatActionTyping,
+				})
+			}
+		}
+	}()
+
+	// Run the agentic loop
+	log.Info().
+		Int64("chat_id", chatID).
+		Int64("session_id", sessionID).
+		Bool("agentic_mode", true).
+		Int("max_steps", cfg.MaxSteps).
+		Int("history_messages", len(history)).
+		Msg("starting agentic run")
+
+	result, err := runner.Run(ctx, history, userText)
+	if err != nil {
+		// Check if it's a step limit termination
+		var termErr *agent.TerminatingErr
+		if errors.As(err, &termErr) && termErr.Reason == agent.ReasonStepLimit {
+			log.Warn().
+				Int64("chat_id", chatID).
+				Int("steps", result.Steps).
+				Msg("agentic run hit step limit")
+		} else {
+			log.Error().Err(err).Int64("chat_id", chatID).Msg("agentic run failed")
+			tg.SendMessage(ctx, &tbot.SendMessageParams{
+				ChatID: chatID,
+				Text:   "Sorry, I encountered an error while processing your request.",
+			})
+			return
+		}
+	}
+
+	log.Info().
+		Int64("chat_id", chatID).
+		Int64("session_id", sessionID).
+		Int("steps", result.Steps).
+		Int("input_tokens", result.TokenUsage.InputTokens).
+		Int("output_tokens", result.TokenUsage.OutputTokens).
+		Int("total_tokens", result.TokenUsage.TotalTokens).
+		Str("terminated_by", string(result.Reason)).
+		Msg("agentic run complete")
+
+	// Record LLM request with aggregated tokens
+	if err := store.RecordLLMRequest(ctx, sessionID, userMessageID, result.TokenUsage.InputTokens, result.TokenUsage.OutputTokens, result.TokenUsage.TotalTokens, cfg.Model); err != nil {
+		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to record llm request")
+	}
+
+	// Store the assistant response
+	if _, err := store.AddMessage(ctx, sessionID, agent.RoleAssistant, result.Response); err != nil {
+		log.Error().Err(err).Int64("chat_id", chatID).Msg("unable to store bot message")
+	}
+
+	// Send response to user
+	tg.SendMessage(ctx, &tbot.SendMessageParams{
+		ChatID: chatID,
+		Text:   result.Response,
 	})
 }
